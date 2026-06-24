@@ -93,8 +93,8 @@ export const billingApi = {
 
 export const pharmacyApi = {
   // Inventory
-  findAllInventory: async (page = 1, limit = 50, lowStock = false) => {
-    const { data } = await apiClient.get('/pharmacy/inventory', { params: { page, limit, lowStock } });
+  findAllInventory: async (page = 1, limit = 50, lowStock = false, search?: string) => {
+    const { data } = await apiClient.get('/pharmacy/inventory', { params: { page, limit, lowStock, search } });
     return data.data as PaginatedResponse<PharmacyInventory>;
   },
   findOneInventory: async (id: string) => {
