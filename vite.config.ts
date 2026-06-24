@@ -9,11 +9,5 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    proxy: {
-      "/api": {
-        target: "https://clinica-api.linker.pe",
-        changeOrigin: true,
-      },
-    },
   },
 });
