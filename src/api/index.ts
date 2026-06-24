@@ -48,7 +48,9 @@ export const prescriptionsApi = {
 export const billingApi = {
   getAccount: async (patientId: string) => { const { data } = await apiClient.get(`/billing/account/${patientId}`); return data.data as BillingAccount; },
   getTransactions: async (patientId: string, page = 1, limit = 20, status?: string) => { const { data } = await apiClient.get(`/billing/transactions/${patientId}`, { params: { page, limit, status } }); return data.data as PaginatedResponse<BillingTransaction>; },
-  getDebtors: async (page = 1, limit = 20) => { const { data } = await apiClient.get('/billing/debtors', { params: { page, limit } }); return data.data; },
+  getDebtors: async (page = 1, limit = 100) => { const { data } = await apiClient.get('/billing/debtors', { params: { page, limit } }); return data.data; },
   createTransaction: async (payload: any) => { const { data } = await apiClient.post('/billing/transactions', payload); return data.data; },
   payTransaction: async (id: string, receiptNumber?: string) => { const { data } = await apiClient.patch(`/billing/transactions/${id}/pay`, { receiptNumber }); return data.data; },
+  payAll: async (patientId: string, payload?: { receiptNumber?: string; paymentMethod?: string }) => { const { data } = await apiClient.post(`/billing/pay-all/${patientId}`, payload ?? {}); return data.data; },
+  getReceipt: async (receiptNumber: string) => { const { data } = await apiClient.get(`/billing/receipt/${receiptNumber}`); return data.data; },
 };
