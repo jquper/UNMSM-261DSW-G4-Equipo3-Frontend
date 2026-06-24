@@ -4,6 +4,7 @@ export interface User {
   firstName: string;
   lastName: string;
   role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'cashier' | 'pharmacy_tech';
+  avatarUrl?: string;
   isActive: boolean;
   lastLoginAt?: string;
   createdAt: string;
@@ -38,12 +39,16 @@ export interface Specialty {
   isActive: boolean;
 }
 
+export type DoctorAvailabilityStatus = 'available' | 'busy' | 'off_duty';
+
 export interface Doctor {
   id: string;
   cmp: string;
   consultationFee: string;
   schedule?: Record<string, any>;
   isActive: boolean;
+  isAvailable: boolean;
+  availabilityStatus: DoctorAvailabilityStatus;
   user: { id: string; firstName: string; lastName: string; email: string };
   specialty: { id: string; name: string; color: string };
 }
@@ -136,6 +141,10 @@ export interface PrescriptionItem {
   instructions?: string;
 }
 
+export type TransactionConcept = 'emergencia' | 'cita' | 'medicina' | 'otro';
+export type PaymentMethod = 'cash' | 'card' | 'electronic_wallet' | 'transfer';
+export type ReceiptType = 'boleta' | 'factura';
+
 export interface BillingAccount {
   id: string;
   patientId: string;
@@ -148,11 +157,91 @@ export interface BillingAccount {
 export interface BillingTransaction {
   id: string;
   type: 'charge' | 'payment' | 'refund';
+  concept: TransactionConcept;
   amount: string;
   description: string;
   status: 'pending' | 'paid' | 'cancelled' | 'refunded';
-  paidAt?: string;
+  paymentMethod?: PaymentMethod;
+  receiptType?: ReceiptType;
   receiptNumber?: string;
+  amountPaid?: string;
+  change?: string;
+  paidAt?: string;
+  cancelledAt?: string;
+  cancellationReason?: string;
+  createdAt: string;
+}
+
+// ── Pharmacy ──────────────────────────────────────────────────────────────────
+
+export interface PharmacyInventory {
+  id: string;
+  medicationName: string;
+  genericName?: string;
+  presentation?: string;
+  concentration?: string;
+  laboratoryName?: string;
+  stock: number;
+  minStock: number;
+  unitPrice: string;
+  expirationDate?: string;
+  lotNumber?: string;
+  location?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type MedicationOrderStatus = 'pending' | 'ready' | 'delivered' | 'cancelled';
+
+export interface MedicationOrderItem {
+  id: string;
+  inventoryId?: string;
+  medicationName: string;
+  requestedQuantity: number;
+  dispensedQuantity: number;
+  unitPrice: string;
+  totalPrice: string;
+}
+
+export interface MedicationOrder {
+  id: string;
+  prescriptionId: string;
+  patientId: string;
+  dispensedBy?: string;
+  status: MedicationOrderStatus;
+  notes?: string;
+  totalAmount: string;
+  dispensedAt?: string;
+  createdAt: string;
+  items?: MedicationOrderItem[];
+}
+
+// ── Cash Register ─────────────────────────────────────────────────────────────
+
+export type CashRegisterStatus = 'open' | 'closed';
+
+export interface CashRegister {
+  id: string;
+  name: string;
+  status: CashRegisterStatus;
+  openingBalance: string;
+  closingBalance?: string;
+  expectedBalance?: string;
+  openedAt: string;
+  closedAt?: string;
+  notes?: string;
+  assignedUser: { id: string; firstName: string; lastName: string };
+}
+
+export type ReceiptSeriesType = 'boleta' | 'factura';
+
+export interface ReceiptSeries {
+  id: string;
+  type: ReceiptSeriesType;
+  prefix: string;
+  currentNumber: number;
+  isActive: boolean;
   createdAt: string;
 }
 

@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Users, UserSquare2, Ticket, Calendar,
-  Siren, FileText, Pill, CreditCard, Stethoscope,
+  Siren, FileText, Pill, CreditCard, Stethoscope, FlaskConical, DollarSign,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useRole } from '@/hooks/useRole';
@@ -27,6 +27,8 @@ const navItems: NavItem[] = [
   { to: '/medical-records', icon: FileText, label: 'Historias Clínicas', roles: ['admin', 'doctor', 'nurse', 'pharmacy_tech'] },
   { to: '/prescriptions', icon: Pill, label: 'Recetas', roles: ['admin', 'doctor', 'nurse', 'pharmacy_tech'] },
   { to: '/billing', icon: CreditCard, label: 'Facturación', roles: ['admin', 'cashier'] },
+  { to: '/pharmacy', icon: FlaskConical, label: 'Farmacia', roles: ['admin', 'pharmacy_tech'] },
+  { to: '/cash-register', icon: DollarSign, label: 'Caja', roles: ['admin', 'cashier'] },
   { to: '/doctors', icon: Stethoscope, label: 'Médicos', roles: ['admin', 'doctor', 'nurse', 'receptionist'] },
   { to: '/users', icon: Users, label: 'Usuarios', roles: ['admin'] },
 ];
