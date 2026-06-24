@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   DollarSign, Plus, Lock, Unlock, Receipt, List,
-  ChevronRight, AlertCircle, CheckCircle,
+  ChevronRight, AlertCircle, CheckCircle, Search, UserCheck, X,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useForm } from 'react-hook-form';
@@ -11,6 +11,7 @@ import { es } from 'date-fns/locale';
 import Table from '@/components/ui/Table';
 import Modal from '@/components/ui/Modal';
 import { cashRegisterApi, billingApi } from '@/api/index';
+import apiClient from '@/api/client';
 import type { CashRegister, ReceiptSeries } from '@/types';
 import { useRole } from '@/hooks/useRole';
 
@@ -38,12 +39,19 @@ function MyRegisterTab() {
   const queryClient = useQueryClient();
   const [isOpenModalOpen, setIsOpenModalOpen] = useState(false);
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
-  const [isCollectOpen, setIsCollectOpen] = useState(false);
   const [collectResult, setCollectResult] = useState<any>(null);
+
+  // DNI search state
+  const [dniInput, setDniInput] = useState('');
+  const [searchDni, setSearchDni] = useState('');
+  const [foundPatient, setFoundPatient] = useState<any>(null);
 
   const openForm = useForm<{ name: string; openingBalance: string; notes: string }>();
   const closeForm = useForm<{ closingBalance: string; notes: string }>();
-  const collectForm = useForm<{ patientId: string; transactionId: string; paymentMethod: string; receiptType: string; amountPaid: string }>();
+  const collectForm = useForm<{ transactionId: string; paymentMethod: string; receiptType: string; amountPaid: string }>();
+
+  const amountPaid = collectForm.watch('amountPaid');
+  const transactionId = collectForm.watch('transactionId');
 
   const { data: myRegister, isLoading } = useQuery({
     queryKey: ['cash-register', 'my'],
@@ -51,23 +59,49 @@ function MyRegisterTab() {
     refetchInterval: 30000,
   });
 
-  // Watch patientId to load pending transactions
-  const patientId = collectForm.watch('patientId');
-  const amountPaid = collectForm.watch('amountPaid');
-  const transactionId = collectForm.watch('transactionId');
+  // Search patient by document number
+  const { isFetching: isSearching } = useQuery({
+    queryKey: ['patients', 'by-doc', searchDni],
+    queryFn: async () => {
+      const { data } = await apiClient.get('/patients', {
+        params: { documentNumber: searchDni, limit: 1 },
+      });
+      const list = data.data?.data ?? [];
+      const patient = list[0] ?? null;
+      setFoundPatient(patient);
+      if (!patient) toast.error(`No se encontró paciente con documento "${searchDni}"`);
+      return patient;
+    },
+    enabled: searchDni.length >= 7,
+  });
 
-  const { data: txData } = useQuery({
-    queryKey: ['billing', 'transactions', patientId],
-    queryFn: () => billingApi.getTransactions(patientId, 1, 50, 'pending'),
-    enabled: !!patientId && patientId.length === 36,
+  // Load pending transactions for the found patient
+  const { data: txData, isFetching: isLoadingTx } = useQuery({
+    queryKey: ['billing', 'transactions', foundPatient?.id, 'pending'],
+    queryFn: () => billingApi.getTransactions(foundPatient!.id, 1, 50, 'pending'),
+    enabled: !!foundPatient?.id,
   });
 
   const pendingTransactions = txData?.data ?? [];
-
   const selectedTx = pendingTransactions.find((t: any) => t.id === transactionId);
   const change = selectedTx && amountPaid
     ? parseFloat(amountPaid) - parseFloat(selectedTx.amount)
     : null;
+
+  const handleSearch = () => {
+    const dni = dniInput.trim();
+    if (!dni) return;
+    setFoundPatient(null);
+    collectForm.reset();
+    setSearchDni(dni);
+  };
+
+  const handleClearPatient = () => {
+    setDniInput('');
+    setSearchDni('');
+    setFoundPatient(null);
+    collectForm.reset();
+  };
 
   const { mutate: openRegister, isPending: isOpening } = useMutation({
     mutationFn: (d: any) => cashRegisterApi.open({ ...d, openingBalance: d.openingBalance || '0' }),
@@ -92,12 +126,18 @@ function MyRegisterTab() {
   });
 
   const { mutate: collectPayment, isPending: isCollecting } = useMutation({
-    mutationFn: (d: any) => cashRegisterApi.collect({ transactionId: d.transactionId, paymentMethod: d.paymentMethod, receiptType: d.receiptType, amountPaid: d.amountPaid }),
+    mutationFn: (d: any) =>
+      cashRegisterApi.collect({
+        transactionId: d.transactionId,
+        paymentMethod: d.paymentMethod,
+        receiptType: d.receiptType,
+        amountPaid: d.amountPaid,
+      }),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['billing'] });
       setCollectResult(data);
       collectForm.reset();
-      toast.success(`Cobro registrado · Vuelto: ${fmt(data.change)}`);
+      toast.success(`Cobro registrado · Vuelto: ${fmt(data.change ?? 0)}`);
     },
     onError: (err: any) => toast.error(err.response?.data?.message || 'Error al cobrar'),
   });
@@ -173,103 +213,181 @@ function MyRegisterTab() {
       </div>
 
       {/* Collect payment */}
-      <div className="card space-y-4">
+      <div className="card space-y-5">
         <h3 className="font-semibold text-gray-800 flex items-center gap-2">
           <DollarSign className="w-5 h-5 text-primary-600" />
           Cobrar Transacción
         </h3>
 
+        {/* Success result */}
         {collectResult && (
           <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-sm space-y-1">
             <p className="font-semibold text-green-800 flex items-center gap-2">
               <Receipt className="w-4 h-4" /> Cobro registrado
             </p>
             <p>Comprobante: <strong className="font-mono">{collectResult.receiptNumber}</strong></p>
-            <p>Recibido: <strong>{fmt(collectResult.amountPaid)}</strong> · Vuelto: <strong className="text-green-700">{fmt(collectResult.change)}</strong></p>
-            <button onClick={() => setCollectResult(null)} className="text-xs text-green-600 underline mt-2">Nuevo cobro</button>
+            <p>
+              Recibido: <strong>{fmt(collectResult.amountPaid)}</strong>
+              {' · '}
+              Vuelto: <strong className="text-green-700">{fmt(collectResult.change ?? 0)}</strong>
+            </p>
+            <button
+              onClick={() => { setCollectResult(null); handleClearPatient(); }}
+              className="text-xs text-green-600 underline mt-2"
+            >
+              Nuevo cobro
+            </button>
           </div>
         )}
 
-        <form onSubmit={collectForm.handleSubmit((d) => collectPayment(d))} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              UUID del Paciente
-            </label>
-            <input
-              {...collectForm.register('patientId', { required: true })}
-              className="input font-mono text-sm"
-              placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-            />
-          </div>
+        {/* Step 1: DNI search */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Buscar paciente por DNI / N° de documento *
+          </label>
 
-          {pendingTransactions.length > 0 && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Transacción pendiente *</label>
-              <select {...collectForm.register('transactionId', { required: true })} className="input">
-                <option value="">-- Seleccionar transacción --</option>
-                {pendingTransactions.map((t: any) => (
-                  <option key={t.id} value={t.id}>
-                    {t.description} · {fmt(t.amount)}
-                  </option>
-                ))}
-              </select>
+          {!foundPatient ? (
+            <div className="flex gap-2">
+              <input
+                value={dniInput}
+                onChange={(e) => setDniInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                className="input flex-1"
+                placeholder="Ej: 12345678"
+                maxLength={20}
+              />
+              <button
+                type="button"
+                onClick={handleSearch}
+                disabled={isSearching || !dniInput.trim()}
+                className="btn btn-primary flex items-center gap-1.5 shrink-0"
+              >
+                <Search className="w-4 h-4" />
+                {isSearching ? 'Buscando...' : 'Buscar'}
+              </button>
             </div>
-          )}
-
-          {patientId && patientId.length === 36 && pendingTransactions.length === 0 && (
-            <p className="text-sm text-gray-400 italic">No hay transacciones pendientes para este paciente</p>
-          )}
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Método de pago *</label>
-              <select {...collectForm.register('paymentMethod', { required: true })} className="input">
-                <option value="">-- Seleccionar --</option>
-                {Object.entries(PAYMENT_METHOD_LABELS).map(([v, l]) => (
-                  <option key={v} value={v}>{l}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de comprobante *</label>
-              <select {...collectForm.register('receiptType', { required: true })} className="input">
-                <option value="">-- Seleccionar --</option>
-                {Object.entries(RECEIPT_TYPE_LABELS).map(([v, l]) => (
-                  <option key={v} value={v}>{l}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Monto recibido (S/.) *</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              {...collectForm.register('amountPaid', { required: true })}
-              className="input"
-              placeholder="0.00"
-            />
-            {selectedTx && amountPaid && (
-              <div className={`mt-1 text-sm font-medium ${(change ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {(change ?? 0) >= 0
-                  ? `Vuelto: ${fmt(change ?? 0)}`
-                  : `⚠ Monto insuficiente (falta ${fmt(Math.abs(change ?? 0))})`}
+          ) : (
+            /* Patient found card */
+            <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center gap-3">
+                <div className="p-1.5 bg-blue-100 rounded-full">
+                  <UserCheck className="w-4 h-4 text-blue-600" />
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-900 text-sm">
+                    {foundPatient.lastName}, {foundPatient.firstName}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {foundPatient.documentType}: {foundPatient.documentNumber}
+                    {foundPatient.phone ? ` · ${foundPatient.phone}` : ''}
+                  </p>
+                </div>
               </div>
-            )}
-          </div>
+              <button
+                type="button"
+                onClick={handleClearPatient}
+                className="p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-blue-100"
+                title="Cambiar paciente"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        </div>
 
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={isCollecting || !selectedTx || (change !== null && change < 0)}
-              className="btn-primary"
-            >
-              {isCollecting ? 'Procesando...' : 'Registrar Cobro'}
-            </button>
-          </div>
-        </form>
+        {/* Step 2: Transaction select (only when patient found) */}
+        {foundPatient && (
+          <>
+            {isLoadingTx ? (
+              <p className="text-sm text-gray-400">Cargando transacciones pendientes...</p>
+            ) : pendingTransactions.length === 0 ? (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                Este paciente no tiene transacciones pendientes de cobro.
+              </div>
+            ) : (
+              <form onSubmit={collectForm.handleSubmit((d) => collectPayment(d))} className="space-y-4">
+                {/* Transaction select */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Transacción a cobrar *
+                    <span className="ml-1 text-xs font-normal text-gray-400">
+                      ({pendingTransactions.length} pendiente{pendingTransactions.length !== 1 ? 's' : ''})
+                    </span>
+                  </label>
+                  <select
+                    {...collectForm.register('transactionId', { required: true })}
+                    className="input"
+                  >
+                    <option value="">-- Seleccionar --</option>
+                    {pendingTransactions.map((t: any) => (
+                      <option key={t.id} value={t.id}>
+                        {t.description} · {fmt(t.amount)}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedTx && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Monto a cobrar: <strong className="text-gray-800">{fmt(selectedTx.amount)}</strong>
+                    </p>
+                  )}
+                </div>
+
+                {/* Payment details */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Método de pago *</label>
+                    <select {...collectForm.register('paymentMethod', { required: true })} className="input">
+                      <option value="">-- Seleccionar --</option>
+                      {Object.entries(PAYMENT_METHOD_LABELS).map(([v, l]) => (
+                        <option key={v} value={v}>{l}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de comprobante *</label>
+                    <select {...collectForm.register('receiptType', { required: true })} className="input">
+                      <option value="">-- Seleccionar --</option>
+                      {Object.entries(RECEIPT_TYPE_LABELS).map(([v, l]) => (
+                        <option key={v} value={v}>{l}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Amount paid + change */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Monto recibido (S/.) *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    {...collectForm.register('amountPaid', { required: true })}
+                    className="input"
+                    placeholder={selectedTx ? parseFloat(selectedTx.amount).toFixed(2) : '0.00'}
+                  />
+                  {selectedTx && amountPaid && (
+                    <div className={`mt-1.5 text-sm font-semibold ${(change ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {(change ?? 0) >= 0
+                        ? `Vuelto: ${fmt(change ?? 0)}`
+                        : `⚠ Monto insuficiente — faltan ${fmt(Math.abs(change ?? 0))}`}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="submit"
+                    disabled={isCollecting || !selectedTx || (change !== null && change < 0)}
+                    className="btn-primary"
+                  >
+                    {isCollecting ? 'Procesando...' : `Registrar Cobro ${selectedTx ? fmt(selectedTx.amount) : ''}`}
+                  </button>
+                </div>
+              </form>
+            )}
+          </>
+        )}
       </div>
 
       {/* Close modal */}
